@@ -2,7 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/hex"
+	"fmt"
 
+	"github.com/herumi/bls-eth-go-binary/bls"
 	e2wallet "github.com/wealdtech/go-eth2-wallet"
 	distributed "github.com/wealdtech/go-eth2-wallet-distributed"
 	unencrypted "github.com/wealdtech/go-eth2-wallet-encryptor-unencrypted"
@@ -11,67 +15,192 @@ import (
 	e2wtypes "github.com/wealdtech/go-eth2-wallet-types/v2"
 )
 
-func main() {
-	ctx := context.Background()
+// BLSID turns a uint64 in to a BLS identifier.
+func BLSID(id uint64) *bls.ID {
+	var res bls.ID
+	buf := [8]byte{}
+	binary.LittleEndian.PutUint64(buf[:], id)
+	if err := res.SetLittleEndian(buf[:]); err != nil {
+		panic(err)
+	}
+	return &res
+}
 
-	store := filesystem.New(filesystem.WithLocation("./test_wallet"))
+func sample1() {
+	fmt.Printf("sample1\n")
+	var sec bls.SecretKey
+	sec.SetByCSPRNG()
+	msg := []byte("abc")
+	pub := sec.GetPublicKey()
+	sig := sec.SignByte(msg)
+	fmt.Printf("verify=%v\n", sig.VerifyByte(pub, msg))
+}
+
+func main() {
+	bls.Init(bls.BLS12_381)
+	bls.SetETHmode(bls.EthModeDraft07)
+
+	//todo: take input w/ commandline or json file, whatever is easier
+	//todo: take as an input an ethdo wallet/account + passphrase
+	//todo: take as an input participants json
+	//todo: take as an input signing threshold
+	//todo: output distributed wallets
+	//todo: usage readme
+	//optional:
+	//todo: sanity checks on inputs
+	//todo: clean up generally
+
+	type participant struct {
+		id  uint64
+		uri string
+	}
+	//indir = ""
+	outdir := "distwallets"
+	walletname := "hdwallet"
+	//account = "1"
+
+	masterPrivateKeyStr := "11c3a427db67bbc885f5f9cd2e1057197ff4a0860787b0fe6045fa19d52cd777"
+
+	participants := []participant{
+		{70358052, "server1:443"},
+		{46192271, "server2:443"},
+		{76680527, "server3:443"},
+	}
+
+	signingThreshold := 2
+
+	//todo: count number of participants
+	participantsCount := 3
+
+	var masterSK bls.SecretKey
+	masterSKByte, _ := hex.DecodeString(masterPrivateKeyStr)
+	masterSK.Deserialize(masterSKByte)
+
+	//only 1st position in this two arrays matters
+	masterSKs := []bls.SecretKey{}
+	masterPKs := []bls.PublicKey{}
+	masterSKs = append(masterSKs, masterSK)
+
+	paritcipantsIDs := []bls.ID{}
+	participantsSKs := []bls.SecretKey{}
+	participantsPKs := []bls.PublicKey{}
+	signatures := []bls.Sign{}
+
+	for i := 1; i < signingThreshold; i++ {
+		var sk bls.SecretKey
+		sk.SetByCSPRNG() //this actually doesn't matter
+		masterSKs = append(masterSKs, sk)
+	}
+
+	masterPKs = bls.GetMasterPublicKey(masterSKs)
+
+	fmt.Printf("master priv %s\n", masterSK.SerializeToHexStr())
+	fmt.Printf("master pub %s\n", masterSK.GetPublicKey().SerializeToHexStr())
+
+	//todo do domain
+	msg := []byte("abc")
+
+	msg_sig := masterSK.SignByte(msg)
+
+	fmt.Printf("verify=%v\n", msg_sig.VerifyByte(masterSK.GetPublicKey(), msg))
+
+	for i := 0; i < participantsCount; i++ {
+		id := BLSID(participants[i].id)
+
+		paritcipantsIDs = append(paritcipantsIDs, *id)
+		var sk bls.SecretKey
+		sk.Set(masterSKs, id)
+		participantsSKs = append(participantsSKs, sk)
+
+		var pk bls.PublicKey
+		pk.Set(masterPKs, id)
+		participantsPKs = append(participantsPKs, pk)
+
+		sig := sk.SignByte(msg)
+		signatures = append(signatures, *sig)
+	}
+
+	idxss := [][]uint32{{1, 2}, {0, 2}, {0, 1}}
+
+	for _, idxs := range idxss {
+		subIDs := []bls.ID{}
+		subSKs := []bls.SecretKey{}
+		subPKs := []bls.PublicKey{}
+		subSigs := []bls.Sign{}
+
+		for i := 0; i < signingThreshold; i++ {
+			idx := idxs[i]
+			subIDs = append(subIDs, paritcipantsIDs[idx])
+			subSKs = append(subSKs, participantsSKs[idx])
+			subPKs = append(subPKs, participantsPKs[idx])
+			subSigs = append(subSigs, signatures[idx])
+		}
+
+		var sec bls.SecretKey
+		var pub bls.PublicKey
+		var sig bls.Sign
+
+		sec.Recover(subSKs, subIDs)
+		fmt.Printf("recover priv %s\n", sec.SerializeToHexStr())
+		pub.Recover(subPKs, subIDs)
+		fmt.Printf("recover pub %s\n", pub.SerializeToHexStr())
+		sig.Recover(subSigs, subIDs)
+		fmt.Printf("verify=%v\n", sig.VerifyByte(masterSK.GetPublicKey(), msg))
+	}
+
+	// below is pseudocode, does not compile
+
+	ctx := context.Background()
+	//todo remove when debugging ends
 	encryptor := unencrypted.New()
 
-	if _, err := distributed.CreateWallet(ctx, "test-wallet-dist", store, encryptor); err != nil {
-		panic(err)
-	}
-	e2wallet.UseStore(store)
-	e2wallet.UseEncryptor(encryptor)
-	// Open a wallet
-	wallet, err := e2wallet.OpenWallet("test-wallet-dist")
-	if err != nil {
-		panic(err)
-	}
+	verificationVector := fromPKArrray(masterPKArray) // cast to [][]byte{
 
-	err = wallet.(e2wtypes.WalletLocker).Unlock(context.Background(), nil)
-	if err != nil {
-		panic(err)
-	}
-	// Always immediately defer locking the wallet to ensure it does not remain unlocked outside of the function.
-	defer wallet.(e2wtypes.WalletLocker).Lock(context.Background())
+	for i := 0; i < participantsCount; i++ {
+		currentStore := outdir + "/" + i
+		currentWalletName := walletname + "_dist_" + i
+		//todo create dir if needed
+		store := filesystem.New(filesystem.WithLocation(current_store))
+		e2wallet.UseStore(store)
+		e2wallet.UseEncryptor(encryptor)
 
-	// Data obtained from a distributed key generation process.
-	privateKey := []byte{
-		0x36, 0xe7, 0x51, 0xee, 0x36, 0x9c, 0x2d, 0xdd, 0xf3, 0x1a, 0x2b, 0x84, 0x0b, 0x05, 0x81, 0x92,
-		0x77, 0xfc, 0xb3, 0xde, 0x81, 0xc3, 0xeb, 0x80, 0xde, 0x21, 0xcf, 0x2c, 0x74, 0xd6, 0xda, 0x3b,
-	}
-	signingThreshold := uint32(2)
-	verificationVector := [][]byte{
-		[]byte{
-			0xb6, 0x81, 0x88, 0x71, 0x95, 0x0a, 0x0a, 0x51, 0x13, 0xbe, 0x35, 0xbb, 0x07, 0x06, 0x18, 0x4b,
-			0x84, 0x16, 0x40, 0x8a, 0x9e, 0x8b, 0x64, 0x98, 0xd3, 0x07, 0xa5, 0x6f, 0xbb, 0x63, 0x4f, 0x93,
-			0x4e, 0xf6, 0x1d, 0x39, 0x88, 0xcd, 0x0d, 0xa3, 0xf0, 0xa8, 0x5d, 0xf9, 0x07, 0x9d, 0x9b, 0x92,
-		},
-		[]byte{
-			0x88, 0x8f, 0x45, 0xa1, 0x4a, 0x3f, 0x01, 0xff, 0x7c, 0xd1, 0xd4, 0xb0, 0x8b, 0xec, 0xd8, 0xfd,
-			0x55, 0xfb, 0xf9, 0x2f, 0x40, 0xd1, 0x4d, 0xbd, 0xe8, 0xfd, 0x26, 0xe8, 0x65, 0xea, 0xda, 0x99,
-			0xf4, 0x6b, 0x85, 0xa3, 0xbd, 0xf4, 0xd2, 0x33, 0xff, 0x3e, 0xe5, 0x67, 0x5d, 0xeb, 0x41, 0xef,
-		},
-	}
-	participants := map[uint64]string{
-		1: "server1:443",
-		2: "server2:443",
-		3: "server3:443",
-	}
+		//todo open if exist, create if not
+		if _, err := distributed.CreateWallet(ctx, currentWalletName, store, encryptor); err != nil {
+			panic(err)
+		}
 
-	_, err = wallet.(e2wtypes.WalletDistributedAccountImporter).ImportDistributedAccount(context.Background(),
-		"My account",
-		privateKey,
-		signingThreshold,
-		verificationVector,
-		participants,
-		[]byte("my account secret"))
-	if err != nil {
-		panic(err)
-	}
+		// Open a wallet
+		currentWallet, err := e2wallet.OpenWallet(currentWalletName)
+		if err != nil {
+			panic(err)
+		}
 
-	// Wallet should be locked as soon as unlocked operations have finished; it is safe to explicitly call wallet.Lock() as well
-	// as defer it as per above.
-	wallet.(e2wtypes.WalletLocker).Lock(context.Background())
+		err = wallet.(e2wtypes.WalletLocker).Unlock(context.Background(), nil)
+		if err != nil {
+			panic(err)
+		}
+		// Always immediately defer locking the wallet to ensure it does not remain unlocked outside of the function.
+		defer wallet.(e2wtypes.WalletLocker).Lock(context.Background())
+
+		verificationVector := fromPKArrray(masterPKArray) // [][]byte{
+
+		subIDs = append(subIDs, paritcipantsIDs[idx])
+		subSKs = append(subSKs, participantsSKs[idx])
+		subPKs = append(subPKs, participantsPKs[idx])
+
+		_, err = wallet.(e2wtypes.WalletDistributedAccountImporter).ImportDistributedAccount(context.Background(),
+			//todo: first 4 bytes of public key in hex,
+			participantsSKs[i],
+			signingThreshold,
+			verificationVector,
+			participants,
+			[]byte("my account secret")) //don't remember what that is; investigate
+		if err != nil {
+			panic(err)
+		}
+
+		wallet.(e2wtypes.WalletLocker).Lock(context.Background())
+
+	}
 
 }
