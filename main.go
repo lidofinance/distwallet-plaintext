@@ -50,6 +50,9 @@ func main() {
 		id  uint64
 		uri string
 	}
+
+	//inputs start
+
 	outdir := "distwallets"
 	walletname := "distrib"
 
@@ -64,6 +67,8 @@ func main() {
 	}
 
 	signingThreshold := 2
+
+	//inputs end
 
 	//todo: count number of participants
 	participantsCount := 3
