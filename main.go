@@ -47,8 +47,9 @@ func main() {
 	//todo: clean up generally
 
 	type participant struct {
-		id  uint64
-		uri string
+		id         uint64
+		uri        string
+		passphrase string
 	}
 
 	//inputs start
@@ -56,14 +57,12 @@ func main() {
 	outdir := "distwallets"
 	walletname := "distrib"
 
-	passphrase := []byte("secret")
-
 	masterPrivateKeyStr := "3eb84bbe03db1c6341c490142a647655f33983ed693d0f43c696ed0378fdc492"
 
 	participants := []participant{
-		{70358052, "solana-multisig-1:8881"},
-		{46192271, "solana-multisig-2:8882"},
-		{76680527, "solana-multisig-3:8883"},
+		{70358052, "solana-multisig-1:8881", "secret1"},
+		{46192271, "solana-multisig-2:8882", "secret2"},
+		{76680527, "solana-multisig-3:8883", "secret3"},
 	}
 
 	signingThreshold := 2
@@ -160,24 +159,22 @@ func main() {
 		participantsMap[participant.id] = participant.uri
 	}
 
+	accountName := masterPKs[0].SerializeToHexStr()[:8]
 	verificationVector := bytesFromPKSlice(masterPKs) // cast to [][]byte{
 
 	for i := 0; i < participantsCount; i++ {
 		currentStore := fmt.Sprintf("%s%s%d", outdir, "/", participants[i].id)
-		currentWalletName := walletname
-		currentAccountName := masterPKs[0].SerializeToHexStr()[:8]
-		//todo create dir if needed
 		store := filesystem.New(filesystem.WithLocation(currentStore))
 		e2wallet.UseStore(store)
 
-		if _, err := store.RetrieveWallet(currentWalletName); err != nil {
-			if _, err := distributed.CreateWallet(ctx, currentWalletName, store, encryptor); err != nil {
+		if _, err := store.RetrieveWallet(walletname); err != nil {
+			if _, err := distributed.CreateWallet(ctx, walletname, store, encryptor); err != nil {
 				panic(err)
 			}
 		}
 
 		// Open a wallet
-		currentWallet, err := e2wallet.OpenWallet(currentWalletName)
+		currentWallet, err := e2wallet.OpenWallet(walletname)
 		if err != nil {
 			panic(err)
 		}
@@ -189,13 +186,15 @@ func main() {
 		// Always immediately defer locking the wallet to ensure it does not remain unlocked outside of the function.
 		defer currentWallet.(e2wtypes.WalletLocker).Lock(context.Background())
 
+		currentPassphrase := []byte(participants[i].passphrase)
+
 		_, err = currentWallet.(e2wtypes.WalletDistributedAccountImporter).ImportDistributedAccount(context.Background(),
-			currentAccountName,
+			accountName,
 			participantsSKs[i].Serialize(),
 			uint32(signingThreshold),
 			verificationVector,
 			participantsMap,
-			passphrase) //don't remember what that is; investigate
+			currentPassphrase) //don't remember what that is; investigate
 		if err != nil {
 			panic(err)
 		}
