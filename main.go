@@ -9,8 +9,7 @@ import (
 	"github.com/herumi/bls-eth-go-binary/bls"
 	e2wallet "github.com/wealdtech/go-eth2-wallet"
 	distributed "github.com/wealdtech/go-eth2-wallet-distributed"
-	unencrypted "github.com/wealdtech/go-eth2-wallet-encryptor-unencrypted"
-	//keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
+	keystorev4 "github.com/wealdtech/go-eth2-wallet-encryptor-keystorev4"
 	filesystem "github.com/wealdtech/go-eth2-wallet-store-filesystem"
 	e2wtypes "github.com/wealdtech/go-eth2-wallet-types/v2"
 )
@@ -26,14 +25,12 @@ func BLSID(id uint64) *bls.ID {
 	return &res
 }
 
-func sample1() {
-	fmt.Printf("sample1\n")
-	var sec bls.SecretKey
-	sec.SetByCSPRNG()
-	msg := []byte("abc")
-	pub := sec.GetPublicKey()
-	sig := sec.SignByte(msg)
-	fmt.Printf("verify=%v\n", sig.VerifyByte(pub, msg))
+func bytesFromPKSlice(PKSlice []bls.PublicKey) [][]byte {
+	var ret [][]byte
+	for _, pk := range PKSlice {
+		ret = append(ret, pk.Serialize())
+	}
+	return ret
 }
 
 func main() {
@@ -41,7 +38,7 @@ func main() {
 	bls.SetETHmode(bls.EthModeDraft07)
 
 	//todo: take input w/ commandline or json file, whatever is easier
-	//todo: take as an input an ethdo wallet/account + passphrase
+	//todo: take as an input a private key
 	//todo: take as an input participants json
 	//todo: take as an input signing threshold
 	//todo: output distributed wallets
@@ -54,12 +51,12 @@ func main() {
 		id  uint64
 		uri string
 	}
-	//indir = ""
 	outdir := "distwallets"
-	walletname := "hdwallet"
-	//account = "1"
+	walletname := "distrib"
 
-	masterPrivateKeyStr := "11c3a427db67bbc885f5f9cd2e1057197ff4a0860787b0fe6045fa19d52cd777"
+	passphrase := []byte("1234")
+
+	masterPrivateKeyStr := "3eb84bbe03db1c6341c490142a647655f33983ed693d0f43c696ed0378fdc492"
 
 	participants := []participant{
 		{70358052, "server1:443"},
@@ -152,21 +149,27 @@ func main() {
 
 	ctx := context.Background()
 	//todo remove when debugging ends
-	encryptor := unencrypted.New()
+	encryptor := keystorev4.New()
 
-	verificationVector := fromPKArrray(masterPKArray) // cast to [][]byte{
+	participantsMap := make(map[uint64]string)
+	for _, participant := range participants {
+		participantsMap[participant.id] = participant.uri
+	}
+
+	verificationVector := bytesFromPKSlice(masterPKs) // cast to [][]byte{
 
 	for i := 0; i < participantsCount; i++ {
-		currentStore := outdir + "/" + i
-		currentWalletName := walletname + "_dist_" + i
+		currentStore := fmt.Sprintf("%s%s%d", outdir, "/", participants[i].id)
+		currentWalletName := fmt.Sprintf("%s%s%d", walletname, "_dist_", participants[i].id)
+		currentAccountName := masterPKs[0].SerializeToHexStr()[:8]
 		//todo create dir if needed
-		store := filesystem.New(filesystem.WithLocation(current_store))
+		store := filesystem.New(filesystem.WithLocation(currentStore))
 		e2wallet.UseStore(store)
-		e2wallet.UseEncryptor(encryptor)
 
-		//todo open if exist, create if not
-		if _, err := distributed.CreateWallet(ctx, currentWalletName, store, encryptor); err != nil {
-			panic(err)
+		if _, err := store.RetrieveWallet(currentWalletName); err != nil {
+			if _, err := distributed.CreateWallet(ctx, currentWalletName, store, encryptor); err != nil {
+				panic(err)
+			}
 		}
 
 		// Open a wallet
@@ -175,31 +178,25 @@ func main() {
 			panic(err)
 		}
 
-		err = wallet.(e2wtypes.WalletLocker).Unlock(context.Background(), nil)
+		err = currentWallet.(e2wtypes.WalletLocker).Unlock(context.Background(), nil)
 		if err != nil {
 			panic(err)
 		}
 		// Always immediately defer locking the wallet to ensure it does not remain unlocked outside of the function.
-		defer wallet.(e2wtypes.WalletLocker).Lock(context.Background())
+		defer currentWallet.(e2wtypes.WalletLocker).Lock(context.Background())
 
-		verificationVector := fromPKArrray(masterPKArray) // [][]byte{
-
-		subIDs = append(subIDs, paritcipantsIDs[idx])
-		subSKs = append(subSKs, participantsSKs[idx])
-		subPKs = append(subPKs, participantsPKs[idx])
-
-		_, err = wallet.(e2wtypes.WalletDistributedAccountImporter).ImportDistributedAccount(context.Background(),
-			//todo: first 4 bytes of public key in hex,
-			participantsSKs[i],
-			signingThreshold,
+		_, err = currentWallet.(e2wtypes.WalletDistributedAccountImporter).ImportDistributedAccount(context.Background(),
+			currentAccountName,
+			participantsSKs[i].Serialize(),
+			uint32(signingThreshold),
 			verificationVector,
-			participants,
-			[]byte("my account secret")) //don't remember what that is; investigate
+			participantsMap,
+			passphrase) //don't remember what that is; investigate
 		if err != nil {
 			panic(err)
 		}
 
-		wallet.(e2wtypes.WalletLocker).Lock(context.Background())
+		currentWallet.(e2wtypes.WalletLocker).Lock(context.Background())
 
 	}
 
