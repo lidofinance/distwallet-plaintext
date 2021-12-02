@@ -41,7 +41,6 @@ func main() {
 	//todo: take as an input a private key
 	//todo: take as an input participants json
 	//todo: take as an input signing threshold
-	//todo: output distributed wallets
 	//todo: usage readme
 	//optional:
 	//todo: sanity checks on inputs
@@ -54,14 +53,14 @@ func main() {
 	outdir := "distwallets"
 	walletname := "distrib"
 
-	passphrase := []byte("1234")
+	passphrase := []byte("secret")
 
 	masterPrivateKeyStr := "3eb84bbe03db1c6341c490142a647655f33983ed693d0f43c696ed0378fdc492"
 
 	participants := []participant{
-		{70358052, "server1:443"},
-		{46192271, "server2:443"},
-		{76680527, "server3:443"},
+		{70358052, "solana-multisig-1:8881"},
+		{46192271, "solana-multisig-2:8882"},
+		{76680527, "solana-multisig-3:8883"},
 	}
 
 	signingThreshold := 2
@@ -160,7 +159,7 @@ func main() {
 
 	for i := 0; i < participantsCount; i++ {
 		currentStore := fmt.Sprintf("%s%s%d", outdir, "/", participants[i].id)
-		currentWalletName := fmt.Sprintf("%s%s%d", walletname, "_dist_", participants[i].id)
+		currentWalletName := walletname
 		currentAccountName := masterPKs[0].SerializeToHexStr()[:8]
 		//todo create dir if needed
 		store := filesystem.New(filesystem.WithLocation(currentStore))
