@@ -9,18 +9,18 @@
 
 `masterPrivateKeyStr` - hex repr of private key, e.g. "3eb84bbe03db1c6341c490142a647655f33983ed693d0f43c696ed0378fdc492"
 
-`participants`  - an ordered array of participants, with ids (8-digits random number), and hosts, eg
+`participants`  - an ordered array of participants, with ids (8-digits random number), hosts, and passphrases eg
 ```
-		{70358052, "solana-multisig-1:8881"},
-		{46192271, "solana-multisig-2:8882"},
-		{76680527, "solana-multisig-3:8883"},
+		{70358052, "solana-multisig-1:8881", "secret1"},
+		{46192271, "solana-multisig-2:8882", "secret2"},
+		{76680527, "solana-multisig-3:8883", "secret3"},
 ```
 
 `signingThreshold` - threshold for signing, default 2
 
 ## outputs
 
-N wallets with +1 account each (creates wallets if they don't exist, opens and add an account if wallet exists)
+N wallets with +1 account each (creates wallets if they don't exist, opens and add an account if wallet exists) with passphrases provided on input
 ```
 ./outdir/70358052/{wallet}
 ./outdir/46192271/{wallet}
