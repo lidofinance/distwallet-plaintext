@@ -23,8 +23,7 @@ import (
 const MasterPrivateKeyEnvName = "MASTER_PRIVATE_KEY"
 
 var (
-	configPath = flag.String("config", "./config.json", "Path to the config file."+
-		" Note that the secret key should be provided in an environment variable")
+	configPath = flag.String("config", "./config.json", "Path to the config file.")
 )
 
 func init() {

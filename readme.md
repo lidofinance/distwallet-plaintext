@@ -1,13 +1,56 @@
 # Private key to dirk/vouch distributed wallet converter
 
-## inputs
-`outdir` - where the wallets with accounts will be generated, default "distwallets"
+## how to run
+
+```
+./distwallet-plaintext --help
+Usage of ./distwallet-plaintext:
+  -config string
+        Path to the config file. (default "./config.json")
+
+```
+
+**NOTE: the master private key is provided as an environment variable (`MASTER_PRIVATE_KEY`) and should be a hex representation of the private key, e.g. "3eb84bbe03db1c6341c490142a647655f33983ed693d0f43c696ed0378fdc492".**
+
+Example:
+
+```bash
+go build -o distwallet-plaintext main.go && MASTER_PRIVATE_KEY=3eb84bbe03db1c6341c490142a647655f33983ed693d0f43c696ed0378fdc492 ./distwallet-plaintext
+```
+
+Sample `config.json`:
+
+```
+{
+  "threshold": 2,
+  "output_dir": "distwallets",
+  "wallet_name": "distrib",
+  "participants": [
+    {
+      "id": 70358052,
+      "uri": "solana-multisig-1:8881",
+      "passphrase": "secret1"
+    },
+    {
+      "id": 46192271,
+      "uri": "solana-multisig-1:8882",
+      "passphrase": "secret2"
+    },
+    {
+      "id": 76680527,
+      "uri": "solana-multisig-1:8883",
+      "passphrase": "secret3"
+    }
+  ]
+}
+```
+
+
+`output_dir` - where the wallets with accounts will be generated, default "distwallets"
 
 `walletname` - the wallet name, common for all N wallets
 
 `passphrase` - passphrase, common for all wallets
-
-`masterPrivateKeyStr` - hex repr of private key, e.g. "3eb84bbe03db1c6341c490142a647655f33983ed693d0f43c696ed0378fdc492"
 
 `participants`  - an ordered array of participants, with ids (8-digits random number), hosts, and passphrases eg
 ```
@@ -16,7 +59,7 @@
 		{76680527, "solana-multisig-3:8883", "secret3"},
 ```
 
-`signingThreshold` - threshold for signing, default 2
+`threshold` - threshold for signing, default 2
 
 ## outputs
 
