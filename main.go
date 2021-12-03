@@ -36,74 +36,6 @@ func init() {
 	}
 }
 
-func saveWallets(config *Config, masterPKs []bls.PublicKey, participantsSKs []bls.SecretKey) error {
-	ctx := context.Background()
-	//todo remove when debugging ends
-	encryptor := keystorev4.New()
-
-	participantsMap := make(map[uint64]string)
-	for _, participant := range config.Participants {
-		participantsMap[participant.Id] = participant.Uri
-	}
-
-	accountName := masterPKs[0].SerializeToHexStr()[:8]
-	verificationVector := bytesFromPKSlice(masterPKs) // cast to [][]byte{
-
-	for idx := 0; idx < len(config.Participants); idx++ {
-		err := func() error {
-			currentStore := fmt.Sprintf("%s%s%d", config.OutputDir, "/", config.Participants[idx].Id)
-			store := filesystem.New(filesystem.WithLocation(currentStore))
-			if err := e2wallet.UseStore(store); err != nil {
-				return fmt.Errorf("failed to UseStore: %w", err)
-			}
-
-			if _, err := store.RetrieveWallet(config.WalletName); err != nil {
-				if _, err := distributed.CreateWallet(ctx, config.WalletName, store, encryptor); err != nil {
-					return fmt.Errorf("failed to CreateWallet: %w", err)
-				}
-			}
-
-			// Open a wallet
-			currentWallet, err := e2wallet.OpenWallet(config.WalletName)
-			if err != nil {
-				return fmt.Errorf("failed to OpenWallet: %w", err)
-			}
-
-			err = currentWallet.(e2wtypes.WalletLocker).Unlock(context.Background(), nil)
-			if err != nil {
-				return fmt.Errorf("failed to Unlock wallet: %w", err)
-			}
-			// Immediately defer locking the wallet to ensure it does not remain unlocked outside the function.
-			defer func(locker e2wtypes.WalletLocker, ctx context.Context) {
-				err := locker.Lock(ctx)
-				if err != nil {
-					log.Printf("Failed to Lock the wallet for participant %s", config.Participants[idx].Uri)
-				}
-			}(currentWallet.(e2wtypes.WalletLocker), context.Background())
-
-			currentPassphrase := []byte(config.Participants[idx].Passphrase)
-
-			_, err = currentWallet.(e2wtypes.WalletDistributedAccountImporter).ImportDistributedAccount(context.Background(),
-				accountName,
-				participantsSKs[idx].Serialize(),
-				uint32(config.Threshold),
-				verificationVector,
-				participantsMap,
-				currentPassphrase) //don't remember what that is; investigate
-			if err != nil {
-				return fmt.Errorf("failed to ImportDistributedAccount: %w", err)
-			}
-
-			return nil
-		}()
-		if err != nil {
-			return fmt.Errorf("failed to save wallet for participant %d: %w", idx, err)
-		}
-	}
-
-	return nil
-}
-
 func main() {
 	flag.Parse()
 
@@ -304,6 +236,74 @@ func checkKeys(
 
 		if !sig.VerifyByte(masterSK.GetPublicKey(), msg) {
 			return fmt.Errorf("failed to verify signature for index pair %d", idx)
+		}
+	}
+
+	return nil
+}
+
+func saveWallets(config *Config, masterPKs []bls.PublicKey, participantsSKs []bls.SecretKey) error {
+	ctx := context.Background()
+	//todo remove when debugging ends
+	encryptor := keystorev4.New()
+
+	participantsMap := make(map[uint64]string)
+	for _, participant := range config.Participants {
+		participantsMap[participant.Id] = participant.Uri
+	}
+
+	accountName := masterPKs[0].SerializeToHexStr()[:8]
+	verificationVector := bytesFromPKSlice(masterPKs) // cast to [][]byte{
+
+	for idx := 0; idx < len(config.Participants); idx++ {
+		err := func() error {
+			currentStore := fmt.Sprintf("%s%s%d", config.OutputDir, "/", config.Participants[idx].Id)
+			store := filesystem.New(filesystem.WithLocation(currentStore))
+			if err := e2wallet.UseStore(store); err != nil {
+				return fmt.Errorf("failed to UseStore: %w", err)
+			}
+
+			if _, err := store.RetrieveWallet(config.WalletName); err != nil {
+				if _, err := distributed.CreateWallet(ctx, config.WalletName, store, encryptor); err != nil {
+					return fmt.Errorf("failed to CreateWallet: %w", err)
+				}
+			}
+
+			// Open a wallet
+			currentWallet, err := e2wallet.OpenWallet(config.WalletName)
+			if err != nil {
+				return fmt.Errorf("failed to OpenWallet: %w", err)
+			}
+
+			err = currentWallet.(e2wtypes.WalletLocker).Unlock(context.Background(), nil)
+			if err != nil {
+				return fmt.Errorf("failed to Unlock wallet: %w", err)
+			}
+			// Immediately defer locking the wallet to ensure it does not remain unlocked outside the function.
+			defer func(locker e2wtypes.WalletLocker, ctx context.Context) {
+				err := locker.Lock(ctx)
+				if err != nil {
+					log.Printf("Failed to Lock the wallet for participant %s", config.Participants[idx].Uri)
+				}
+			}(currentWallet.(e2wtypes.WalletLocker), context.Background())
+
+			currentPassphrase := []byte(config.Participants[idx].Passphrase)
+
+			_, err = currentWallet.(e2wtypes.WalletDistributedAccountImporter).ImportDistributedAccount(context.Background(),
+				accountName,
+				participantsSKs[idx].Serialize(),
+				uint32(config.Threshold),
+				verificationVector,
+				participantsMap,
+				currentPassphrase) //don't remember what that is; investigate
+			if err != nil {
+				return fmt.Errorf("failed to ImportDistributedAccount: %w", err)
+			}
+
+			return nil
+		}()
+		if err != nil {
+			return fmt.Errorf("failed to save wallet for participant %d: %w", idx, err)
 		}
 	}
 
