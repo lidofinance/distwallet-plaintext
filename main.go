@@ -244,7 +244,6 @@ func checkKeys(
 
 func saveWallets(config *Config, masterPKs []bls.PublicKey, participantsSKs []bls.SecretKey) error {
 	ctx := context.Background()
-	//todo remove when debugging ends
 	encryptor := keystorev4.New()
 
 	participantsMap := make(map[uint64]string)
